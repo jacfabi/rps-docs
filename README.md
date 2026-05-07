@@ -30,9 +30,49 @@ Winning relationships:
 
 Your bot must expose this HTTP endpoint:
 
-`GET /play`
+`POST /play`
 
-It must return JSON in this format:
+The server will send a JSON body with the full history of the current battle from your bot's perspective:
+
+```json
+{
+  "history": [
+    {
+      "my_choice": "rock",
+      "opponent_choice": "scissors",
+      "outcome": "win"
+    },
+    {
+      "my_choice": "fire",
+      "opponent_choice": "water",
+      "outcome": "loss"
+    }
+  ]
+}
+```
+
+`history` is an ordered list of all games played so far in the current battle. It is empty on the first game.
+
+Each entry contains:
+
+| Field | Type | Description |
+|---|---|---|
+| `my_choice` | string or null | The choice your bot made (null if your bot forfeited) |
+| `opponent_choice` | string or null | The choice the opponent made (null if they forfeited) |
+| `outcome` | string | Result from your perspective (see below) |
+
+Possible `outcome` values:
+
+| Value | Meaning |
+|---|---|
+| `win` | You won this game |
+| `loss` | You lost this game |
+| `draw` | Both choices tied |
+| `forfeit_win` | Opponent forfeited, you win |
+| `forfeit_loss` | You forfeited (your bot failed to respond), opponent wins |
+| `forfeit_both` | Both bots forfeited |
+
+Your bot must return JSON in this format:
 
 ```json
 {
@@ -52,15 +92,16 @@ Where `choice` is one of:
 
 Requirements:
 
-- your bot must respond to `GET /play`
+- your bot must respond to `POST /play`
 - your response must be valid JSON
 - your JSON must contain a `choice` field
 - `choice` must be one of the 7 valid values above
+- you may ignore the `history` body entirely if you don't need it
 
 The game host will call:
 
 ```text
-GET {your-public-endpoint}/play
+POST {your-public-endpoint}/play
 ```
 
 So if your public bot URL is:
@@ -72,7 +113,7 @@ https://xyz789.ngrok-free.app
 The host will request:
 
 ```text
-https://xyz789.ngrok-free.app/play
+POST https://xyz789.ngrok-free.app/play
 ```
 
 ## Example Client In Python
@@ -83,6 +124,7 @@ Python is only an example here. You may use any language or framework.
 from random import choice
 
 from fastapi import FastAPI
+from pydantic import BaseModel
 import uvicorn
 
 app = FastAPI()
@@ -98,8 +140,19 @@ CHOICES = [
 ]
 
 
-@app.get("/play")
-def play():
+class HistoryEntry(BaseModel):
+    my_choice: str | None
+    opponent_choice: str | None
+    outcome: str
+
+
+class PlayRequest(BaseModel):
+    history: list[HistoryEntry] = []
+
+
+@app.post("/play")
+def play(request: PlayRequest):
+    # request.history contains all previous games — use it or ignore it
     return {"choice": choice(CHOICES)}
 
 
@@ -157,7 +210,7 @@ Notes:
 - `name` is your bot name shown in the UI
 - `endpoint` must be the public base URL of your bot
 - `cheer` is the taunt shown when your battle starts
-- the game service will call `GET {endpoint}/play`
+- the game service will call `POST {endpoint}/play`
 
 ## Using ngrok
 
@@ -243,7 +296,7 @@ python3 register_bot.py \
 
 ## Quick Checklist
 
-1. Implement the bot contract: `GET /play`
+1. Implement the bot contract: `POST /play`
 2. Return valid JSON with a valid `choice`
 3. Run your bot locally using your language/framework of choice
 4. Expose it with `ngrok http <port>`
